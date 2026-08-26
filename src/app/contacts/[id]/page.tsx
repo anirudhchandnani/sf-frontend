@@ -57,7 +57,7 @@ export default async function ContactDetailPage({ params }: PageProps) {
 
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <ContactAvatar contact={contact} size="lg" />
+          <ContactAvatar contact={contact} size="xl" />
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
               {contact.full_name}

@@ -80,7 +80,23 @@ describe("formDataToValues", () => {
     expect(extracted.first_name).toBe("Grace");
     expect(extracted.last_name).toBe("");
     expect(Object.keys(extracted).sort()).toEqual(
-      CONTACT_FIELDS.map((field) => field.name).sort(),
+      [...CONTACT_FIELDS.map((field) => field.name), "photo"].sort(),
     );
+  });
+
+  it("carries photo through, which CONTACT_FIELDS does not cover", () => {
+    // photo comes from PhotoField's hidden input, not from CONTACT_FIELD_GROUPS.
+    // Saving is a full replace, so dropping it here would wipe the picture on
+    // every edit that only touched a name.
+    const formData = new FormData();
+    formData.set("photo", "data:image/png;base64,iVBORw0KGgo=");
+
+    expect(formDataToValues(formData).photo).toBe(
+      "data:image/png;base64,iVBORw0KGgo=",
+    );
+  });
+
+  it("returns an empty photo when the form has none", () => {
+    expect(formDataToValues(new FormData()).photo).toBe("");
   });
 });

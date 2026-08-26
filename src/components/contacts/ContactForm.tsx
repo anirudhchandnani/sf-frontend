@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { AlertCircle, Loader2 } from "lucide-react";
 import Field from "@/components/ui/Field";
+import PhotoField from "@/components/contacts/PhotoField";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import { CONTACT_FIELD_GROUPS } from "@/lib/contacts/schema";
 import {
@@ -69,6 +70,24 @@ export default function ContactForm({
           <span>{state.message}</span>
         </div>
       ) : null}
+
+      <fieldset className="space-y-4">
+        <legend className="sr-only">Photo</legend>
+
+        <div className="border-b border-hairline pb-2">
+          <h2 className="font-display text-sm font-semibold text-foreground">
+            Photo
+          </h2>
+          <p className="text-[13px] text-muted-foreground">
+            Optional profile picture, shown as a circular avatar.
+          </p>
+        </div>
+
+        <PhotoField
+          defaultValue={state.values?.photo ?? contact?.photo ?? null}
+          error={state.fieldErrors?.photo}
+        />
+      </fieldset>
 
       {CONTACT_FIELD_GROUPS.map((group) => (
         <fieldset key={group.title} className="space-y-4">

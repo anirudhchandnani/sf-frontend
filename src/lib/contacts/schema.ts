@@ -9,6 +9,15 @@ import type { ContactInput } from "./types";
  * and anything it rejects anyway is surfaced by `toFieldErrors` in `./api.ts`.
  */
 
+/**
+ * Accepted `photo` payloads, mirroring the API's allow-list. Kept in sync with
+ * `ALLOWED_PHOTO_TYPES` in the backend's `app/schemas.py`.
+ */
+export const PHOTO_DATA_URL_RE = /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+=*$/;
+
+/** Cap on the decoded image, matching `MAX_PHOTO_BYTES` on the API. */
+export const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+
 /** Optional text: trimmed, and blank becomes `null` (the API clears the field). */
 function optionalText(max: number, label: string) {
   return z
@@ -49,6 +58,16 @@ export const contactInputSchema = z.object({
   notes: z
     .string()
     .trim()
+    .transform((value) => value || null)
+    .nullable()
+    .default(null),
+  photo: z
+    .string()
+    .trim()
+    .refine(
+      (value) => value === "" || PHOTO_DATA_URL_RE.test(value),
+      "Photo must be a PNG, JPEG, GIF, or WebP image",
+    )
     .transform((value) => value || null)
     .nullable()
     .default(null),
@@ -214,14 +233,25 @@ export const CONTACT_FIELDS: ContactFieldSpec[] = CONTACT_FIELD_GROUPS.flatMap(
   (group) => group.fields,
 );
 
-/** Pull the contact fields out of a submitted form, as raw strings. */
+/**
+ * Pull the contact fields out of a submitted form, as raw strings.
+ *
+ * `CONTACT_FIELDS` only covers the text inputs rendered from `CONTACT_FIELD_GROUPS`.
+ * `photo` is not one of them — it comes from `PhotoField`'s hidden input — so it has
+ * to be read explicitly. Saving is a full replace (PUT), so anything missing here is
+ * sent as absent and the API nulls it: leaving `photo` out would silently wipe a
+ * contact's picture every time someone edited their name.
+ */
 export function formDataToValues(
   formData: FormData,
 ): Record<keyof ContactInput, string> {
-  return Object.fromEntries(
-    CONTACT_FIELDS.map((field) => [
-      field.name,
-      String(formData.get(field.name) ?? ""),
-    ]),
-  ) as Record<keyof ContactInput, string>;
+  return {
+    ...(Object.fromEntries(
+      CONTACT_FIELDS.map((field) => [
+        field.name,
+        String(formData.get(field.name) ?? ""),
+      ]),
+    ) as Record<keyof ContactInput, string>),
+    photo: String(formData.get("photo") ?? ""),
+  };
 }
