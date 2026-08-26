@@ -1,11 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import ContactAvatar from "@/components/contacts/ContactAvatar";
 import { makeContact } from "../mocks/handlers";
 
 const PHOTO = "data:image/png;base64,iVBORw0KGgo=";
 
 describe("ContactAvatar", () => {
-  it("falls back to initials when the contact has no photo", () => {
+  it("shows initials when the contact has no photo", () => {
     const { container } = render(
       <ContactAvatar contact={makeContact({ photo: null })} />,
     );
@@ -19,10 +19,7 @@ describe("ContactAvatar", () => {
       <ContactAvatar contact={makeContact({ photo: PHOTO })} />,
     );
 
-    const image = container.querySelector("img");
-    expect(image).not.toBeNull();
-    expect(image).toHaveAttribute("src", PHOTO);
-    expect(screen.queryByText("AL")).not.toBeInTheDocument();
+    expect(container.querySelector("img")).toHaveAttribute("src", PHOTO);
   });
 
   it("renders the photo as a circle, LinkedIn style", () => {
@@ -30,8 +27,6 @@ describe("ContactAvatar", () => {
       <ContactAvatar contact={makeContact({ photo: PHOTO })} />,
     );
 
-    // The three classes that make it read as a profile picture rather than a
-    // stretched thumbnail.
     const className = container.querySelector("img")?.className ?? "";
     expect(className).toContain("rounded-full");
     expect(className).toContain("object-cover");
@@ -49,14 +44,89 @@ describe("ContactAvatar", () => {
     }
   });
 
-  it("hides the avatar from assistive tech, since the name is already shown", () => {
+  it("hides the whole avatar from assistive tech, since the name is shown", () => {
     const { container } = render(
       <ContactAvatar contact={makeContact({ photo: PHOTO })} />,
     );
 
-    expect(container.querySelector("img")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
+    // The wrapper carries aria-hidden, so both the image and the initials
+    // underneath it are skipped rather than announced twice.
+    expect(container.firstElementChild).toHaveAttribute("aria-hidden", "true");
+  });
+
+  describe("fallback", () => {
+    it("keeps the initials underneath the photo", () => {
+      // A transparent PNG is a valid image, so onError never fires — layering
+      // the initials behind it is what stops the avatar reading as empty.
+      render(<ContactAvatar contact={makeContact({ photo: PHOTO })} />);
+
+      expect(screen.getByText("AL")).toBeInTheDocument();
+    });
+
+    it("reveals the initials when the image fails to decode", () => {
+      const { container } = render(
+        <ContactAvatar contact={makeContact({ photo: PHOTO })} />,
+      );
+
+      fireEvent.error(container.querySelector("img")!);
+
+      expect(container.querySelector("img")).toBeNull();
+      expect(screen.getByText("AL")).toBeInTheDocument();
+    });
+
+    it("retries when the source changes", () => {
+      const { container, rerender } = render(
+        <ContactAvatar contact={makeContact({ photo: PHOTO })} />,
+      );
+      fireEvent.error(container.querySelector("img")!);
+      expect(container.querySelector("img")).toBeNull();
+
+      rerender(
+        <ContactAvatar
+          contact={makeContact({ photo: "data:image/png;base64,Zm l4ZWQ=" })}
+        />,
+      );
+
+      expect(container.querySelector("img")).not.toBeNull();
+    });
+  });
+
+  describe("list items", () => {
+    it("fetches the photo by URL when given has_photo instead of bytes", () => {
+      // List responses no longer inline base64; they carry a flag.
+      const { container } = render(
+        <ContactAvatar
+          contact={{
+            id: 7,
+            first_name: "Ada",
+            last_name: "Lovelace",
+            email: "ada@example.com",
+            has_photo: true,
+          }}
+        />,
+      );
+
+      expect(container.querySelector("img")).toHaveAttribute(
+        "src",
+        "/api/contacts/7/photo",
+      );
+    });
+
+    it("shows initials when has_photo is false", () => {
+      const { container } = render(
+        <ContactAvatar
+          contact={{
+            id: 7,
+            first_name: "Ada",
+            last_name: "Lovelace",
+            email: "ada@example.com",
+            has_photo: false,
+          }}
+        />,
+      );
+
+      expect(container.querySelector("img")).toBeNull();
+      expect(screen.getByText("AL")).toBeInTheDocument();
+    });
   });
 });

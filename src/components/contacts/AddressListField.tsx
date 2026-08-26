@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 import { AlertCircle, MapPin, Plus, Trash2 } from "lucide-react";
 import { buttonClasses } from "@/components/ui/Button";
 import { ADDRESS_TYPES, type AddressInput } from "@/lib/contacts/types";
+import { MAX_ADDRESSES } from "@/lib/contacts/schema";
 
 /** A row plus a stable key, so React keeps inputs attached across reorders. */
 type Row = AddressInput & { key: string };
@@ -58,8 +59,12 @@ export default function AddressListField({
 
   function addRow() {
     const key = `added-${addedCount.current++}`;
-    setRows((current) => [...current, { ...EMPTY, key }]);
+    setRows((current) =>
+      current.length >= MAX_ADDRESSES ? current : [...current, { ...EMPTY, key }],
+    );
   }
+
+  const atCap = rows.length >= MAX_ADDRESSES;
 
   function removeRow(key: string) {
     setRows((current) => current.filter((row) => row.key !== key));
@@ -166,10 +171,22 @@ export default function AddressListField({
         </fieldset>
       ))}
 
-      <button type="button" onClick={addRow} className={buttonClasses("secondary")}>
-        <Plus className="h-4 w-4" aria-hidden="true" />
-        Add address
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={addRow}
+          disabled={atCap}
+          className={buttonClasses("secondary")}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Add address
+        </button>
+        {atCap ? (
+          <p className="text-[13px] text-muted-foreground">
+            That is the maximum of {MAX_ADDRESSES} addresses.
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

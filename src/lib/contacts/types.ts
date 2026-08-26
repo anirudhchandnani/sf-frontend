@@ -59,9 +59,18 @@ export type ContactInput = Omit<
 /** The scalar contact fields — everything the flat text form covers. */
 export type ContactScalarInput = Omit<ContactInput, "addresses">;
 
+/**
+ * `ContactListItem` — a contact as it appears in a list.
+ *
+ * Identical to `Contact` except the base64 `photo` is replaced by a `has_photo`
+ * flag. Inlining images in a collection made the response grow without bound;
+ * the bytes come from `/api/contacts/{id}/photo` instead.
+ */
+export type ContactListItem = Omit<Contact, "photo"> & { has_photo: boolean };
+
 /** `ContactPage` — one page of contacts plus the totals needed to paginate. */
 export interface ContactPage {
-  items: Contact[];
+  items: ContactListItem[];
   total: number;
   limit: number;
   offset: number;

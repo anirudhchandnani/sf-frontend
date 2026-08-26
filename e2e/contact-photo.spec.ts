@@ -159,9 +159,30 @@ test.describe('contact photo', () => {
     })
 
     await page.goto('/contacts')
-    await expectCircular(page.locator('img[src^="data:image"]').first())
+
+    // List responses carry has_photo rather than inline base64, so the avatar
+    // points at the photo route. Inlining images here made the page ~50 MB.
+    const avatar = page.locator(`img[src="/api/contacts/${id}/photo"]`)
+    await expectCircular(avatar)
+    await expect(avatar).toHaveJSProperty('naturalWidth', 240)
+
     await page.screenshot({ path: `${SHOTS}/07-list-with-avatars.png`, fullPage: true })
 
+    await deleteContact(page, id)
+  })
+
+  test('the list page does not inline photo data', async ({ page }) => {
+    const id = await createContact(page, {
+      first: 'Payload',
+      last: 'Guard',
+      email: uniqueEmail('payload'),
+      photo: 'large.png',
+    })
+
+    const response = await page.request.get('/contacts')
+    const html = await response.text()
+
+    expect(html).not.toContain('data:image/png;base64')
     await deleteContact(page, id)
   })
 
@@ -183,6 +204,46 @@ test.describe('contact photo', () => {
     await expect(page.locator('img[src^="data:image"]')).toHaveCount(0)
     await expect(page.getByText('RP').first()).toBeVisible()
     await page.screenshot({ path: `${SHOTS}/09-photo-removed-initials.png`, fullPage: true })
+
+    await deleteContact(page, id)
+  })
+})
+
+test.describe('avatar fallback', () => {
+  test('an unreachable photo reveals the initials', async ({ page }) => {
+    // Simulate the decode failure that used to leave a blank circle: the flag
+    // says there is a photo, but the route 404s.
+    const id = await createContact(page, {
+      first: 'Broken',
+      last: 'Image',
+      email: uniqueEmail('broken'),
+      photo: 'avatar.png',
+    })
+
+    await page.route(`**/api/contacts/${id}/photo`, (route) => route.fulfill({ status: 404 }))
+    await page.goto('/contacts')
+
+    // onError hides the image and the initials underneath are revealed.
+    await expect(page.getByText('BI').first()).toBeVisible()
+    await page.screenshot({ path: `${SHOTS}/10-broken-photo-falls-back.png`, fullPage: true })
+
+    await page.unroute(`**/api/contacts/${id}/photo`)
+    await deleteContact(page, id)
+  })
+
+  test('initials sit behind the photo so a transparent image is never blank', async ({ page }) => {
+    const id = await createContact(page, {
+      first: 'Ghost',
+      last: 'User',
+      email: uniqueEmail('ghost'),
+      photo: 'avatar.png',
+    })
+
+    await page.goto(`/contacts/${id}`)
+
+    // The text is present in the DOM even while the photo covers it, which is
+    // what stops a fully transparent PNG reading as an empty ring.
+    await expect(page.getByText('GU').first()).toBeAttached()
 
     await deleteContact(page, id)
   })
@@ -238,6 +299,21 @@ test.describe('photo rejections', () => {
     await expect(page.locator('p[role="alert"]')).toContainText(/2 MB/i)
     await expect(page.getByAltText(/profile photo preview/i)).toHaveCount(0)
     await page.screenshot({ path: `${SHOTS}/08-oversized-rejected.png`, fullPage: true })
+  })
+
+  test('rejects bytes that are not a real image', async ({ page }) => {
+    // The API sniffs magic bytes now, so a PNG label on HTML content is refused
+    // rather than stored and later rendered as a broken avatar.
+    const response = await page.request.post(`${API}/api/v1/contacts`, {
+      data: {
+        first_name: 'Fake',
+        last_name: 'Png',
+        email: uniqueEmail('fakepng'),
+        photo: `data:image/png;base64,${Buffer.from('<html>nope</html>').toString('base64')}`,
+      },
+    })
+
+    expect(response.status()).toBe(422)
   })
 
   test('rejects an SVG, which can carry script', async ({ page }) => {

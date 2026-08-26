@@ -1,7 +1,12 @@
 import {
   CONTACT_FIELDS,
+  MAX_ADDRESSES,
+  MAX_PHOTO_BYTES,
+  addressListSchema,
   contactInputSchema,
+  decodedPhotoBytes,
   formDataToValues,
+  zodAddressErrors,
   zodFieldErrors,
 } from "@/lib/contacts/schema";
 
@@ -65,6 +70,109 @@ describe("contactInputSchema", () => {
       first_name: "First name must be 100 characters or fewer",
       phone: "Phone must be 40 characters or fewer",
     });
+  });
+});
+
+describe("photo size", () => {
+  const png = (bytes: number) =>
+    `data:image/png;base64,${"A".repeat(Math.ceil((bytes * 4) / 3))}`;
+
+  it("measures decoded bytes, not the encoded string", () => {
+    // Base64 inflates by ~4/3, so capping the string length would wrongly
+    // reject an image that is comfortably under the limit.
+    expect(decodedPhotoBytes("data:image/png;base64,QUJD")).toBe(3);
+    expect(decodedPhotoBytes("data:image/png;base64,QQ==")).toBe(1);
+    expect(decodedPhotoBytes("data:image/png;base64,QUI=")).toBe(2);
+  });
+
+  it("accepts a photo under the limit", () => {
+    const result = contactInputSchema.safeParse(values({ photo: png(1000) }));
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a photo over the limit", () => {
+    // This is the check that used to live only in the browser component, so a
+    // post that skipped it reached the API and failed with a generic error.
+    const result = contactInputSchema.safeParse(
+      values({ photo: png(MAX_PHOTO_BYTES + 1024) }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(zodFieldErrors(result.error!).photo).toMatch(/2 MB/);
+  });
+});
+
+describe("addressListSchema", () => {
+  const address = (overrides: Record<string, string> = {}) => ({
+    type: "Home",
+    street: "12 Ockham Rd",
+    city: "London",
+    state: "",
+    postal_code: "",
+    country: "",
+    ...overrides,
+  });
+
+  it("accepts a normal list", () => {
+    expect(addressListSchema.safeParse([address()]).success).toBe(true);
+  });
+
+  it("rejects an address with nothing filled in", () => {
+    const result = addressListSchema.safeParse([
+      { type: "Home", street: "", city: "", state: "", postal_code: "", country: "" },
+    ]);
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an address with only one part filled in", () => {
+    const result = addressListSchema.safeParse([
+      address({ street: "", city: "", country: "UK" }),
+    ]);
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects duplicate rows", () => {
+    const result = addressListSchema.safeParse([address(), address()]);
+
+    expect(result.success).toBe(false);
+    expect(zodAddressErrors(result.error!)[1]).toMatch(/same as address 1/i);
+  });
+
+  it("ignores case and padding when comparing", () => {
+    const result = addressListSchema.safeParse([
+      address(),
+      address({ city: "  LONDON  " }),
+    ]);
+
+    expect(result.success).toBe(false);
+  });
+
+  it("allows the same address under two different types", () => {
+    // Working from home is legitimate.
+    const result = addressListSchema.safeParse([
+      address({ type: "Home" }),
+      address({ type: "Work" }),
+    ]);
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects more addresses than the cap", () => {
+    const many = Array.from({ length: MAX_ADDRESSES + 1 }, (_, i) =>
+      address({ city: `c${i}` }),
+    );
+
+    expect(addressListSchema.safeParse(many).success).toBe(false);
+  });
+
+  it("accepts exactly the cap", () => {
+    const many = Array.from({ length: MAX_ADDRESSES }, (_, i) =>
+      address({ city: `c${i}` }),
+    );
+
+    expect(addressListSchema.safeParse(many).success).toBe(true);
   });
 });
 

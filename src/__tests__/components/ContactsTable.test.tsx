@@ -4,7 +4,7 @@ import ContactsTable from "@/components/contacts/ContactsTable";
 import Pagination from "@/components/contacts/Pagination";
 import EmptyState from "@/components/contacts/EmptyState";
 import { DEFAULT_LIST_QUERY } from "@/lib/contacts/query";
-import { CONTACTS } from "../mocks/handlers";
+import { LIST_CONTACTS } from "../mocks/handlers";
 
 jest.mock("@/app/contacts/actions", () => ({
   deleteContactAction: jest.fn(async () => ({})),
@@ -12,9 +12,9 @@ jest.mock("@/app/contacts/actions", () => ({
 
 describe("ContactsTable", () => {
   it("renders a row per contact with links to view, mail, and edit", () => {
-    render(<ContactsTable contacts={CONTACTS} query={DEFAULT_LIST_QUERY} />);
+    render(<ContactsTable contacts={LIST_CONTACTS} query={DEFAULT_LIST_QUERY} />);
 
-    expect(screen.getAllByRole("row")).toHaveLength(CONTACTS.length + 1);
+    expect(screen.getAllByRole("row")).toHaveLength(LIST_CONTACTS.length + 1);
 
     expect(screen.getByRole("link", { name: "Ada Lovelace" })).toHaveAttribute(
       "href",
@@ -32,7 +32,7 @@ describe("ContactsTable", () => {
   });
 
   it("marks the sorted column and links to the opposite direction", () => {
-    render(<ContactsTable contacts={CONTACTS} query={DEFAULT_LIST_QUERY} />);
+    render(<ContactsTable contacts={LIST_CONTACTS} query={DEFAULT_LIST_QUERY} />);
 
     const nameHeader = screen.getByRole("columnheader", { name: /name/i });
     expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
@@ -52,7 +52,7 @@ describe("ContactsTable", () => {
   it("shows a dash where an optional field is empty", () => {
     render(
       <ContactsTable
-        contacts={[{ ...CONTACTS[0], phone: null, company: null }]}
+        contacts={[{ ...LIST_CONTACTS[0], phone: null, company: null }]}
         query={DEFAULT_LIST_QUERY}
       />,
     );

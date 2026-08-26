@@ -59,7 +59,9 @@ export function formatTimestamp(iso: string): string {
 }
 
 /** "Ada Lovelace · Mathematician at Analytical Engines"-style subtitle. */
-export function jobLine(contact: Contact): string | null {
+export function jobLine(
+  contact: Pick<Contact, "job_title" | "company">,
+): string | null {
   if (contact.job_title && contact.company) {
     return `${contact.job_title} at ${contact.company}`;
   }

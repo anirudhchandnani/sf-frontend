@@ -6,14 +6,14 @@ import SortHeader from "./SortHeader";
 import { buttonClasses } from "@/components/ui/Button";
 import { jobLine } from "@/lib/contacts/format";
 import type { ContactListQuery } from "@/lib/contacts/query";
-import type { Contact } from "@/lib/contacts/types";
+import type { ContactListItem } from "@/lib/contacts/types";
 
 /** The contacts list. Narrow screens drop the phone and company columns. */
 export default function ContactsTable({
   contacts,
   query,
 }: {
-  contacts: Contact[];
+  contacts: ContactListItem[];
   query: ContactListQuery;
 }) {
   return (

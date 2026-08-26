@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AddressListField from "@/components/contacts/AddressListField";
-import { formDataToAddresses } from "@/lib/contacts/schema";
+import { MAX_ADDRESSES, formDataToAddresses } from "@/lib/contacts/schema";
 import type { Address, AddressInput } from "@/lib/contacts/types";
 
 function makeAddress(overrides: Partial<Address> = {}): Address {
@@ -150,6 +150,31 @@ describe("AddressListField", () => {
 
     // Not the string "null".
     expect(screen.queryByDisplayValue("null")).toBeNull();
+  });
+
+  it("stops adding rows at the cap and says so", async () => {
+    const rows = Array.from({ length: MAX_ADDRESSES }, (_, i) =>
+      makeAddress({ id: i + 1, city: `c${i}` }),
+    );
+    renderInForm(rows);
+
+    const add = screen.getByRole("button", { name: /add address/i });
+    expect(add).toBeDisabled();
+    expect(screen.getByText(new RegExp(`maximum of ${MAX_ADDRESSES}`))).toBeInTheDocument();
+
+    await userEvent.click(add);
+    expect(
+      screen.getAllByRole("group", { name: /^Address \d+$/ }),
+    ).toHaveLength(MAX_ADDRESSES);
+  });
+
+  it("allows adding right up to the cap", async () => {
+    const rows = Array.from({ length: MAX_ADDRESSES - 1 }, (_, i) =>
+      makeAddress({ id: i + 1, city: `c${i}` }),
+    );
+    renderInForm(rows);
+
+    expect(screen.getByRole("button", { name: /add address/i })).toBeEnabled();
   });
 
   it("shows a per-row error", () => {
