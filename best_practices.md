@@ -70,38 +70,71 @@ Example code after:
 <input type="hidden" name="photo" value={photo ?? ""} />
 ```
 
-## Keep the initials fallback whenever the richer representation is absent
+## Layer the fallback behind the richer representation, do not branch between them
 
-Optional presentation data must degrade, not disappear. The avatar renders a photo when
-one exists and the existing initials bubble when it does not — never an empty box or a
-broken image icon.
+Optional presentation data must degrade, not disappear. Branching on whether a photo *exists*
+handles only one failure: an image that is present but undecodable still renders as a broken
+icon, and a fully transparent one renders as an empty ring. Render the fallback always and put
+the image on top of it, so a decode failure reveals the fallback and transparency shows it
+through.
 
 Example code before:
 
 ```tsx
-return <img src={contact.photo} className="rounded-full" alt="" />;
+// Either/or: nothing left to fall back to once the <img> is chosen.
+if (contact.photo) {
+  return <img src={contact.photo} className="rounded-full" alt="" />;
+}
+return <span className="contact-avatar">{initials(contact)}</span>;
 ```
 
 Example code after:
 
 ```tsx
-if (contact.photo) {
-  return (
-    <img
-      src={contact.photo}
-      alt=""
-      aria-hidden="true"
-      className={`inline-block shrink-0 rounded-full aspect-square object-cover ${SIZES[size]}`}
-    />
-  );
-}
+// Track which source failed, not a boolean: a changed src is then retried
+// automatically, with no effect needed to reset the flag.
+const [failedSrc, setFailedSrc] = useState<string | null>(null);
+const failed = src !== null && failedSrc === src;
 
 return (
-  <span aria-hidden="true" style={style} className={`contact-avatar ... ${SIZES[size]}`}>
+  <span aria-hidden="true" className={`contact-avatar relative overflow-hidden ${SIZES[size]}`}>
     {initials(contact)}
+    {src && !failed ? (
+      <img
+        src={src}
+        alt=""
+        onError={() => setFailedSrc(src)}
+        className="absolute inset-0 h-full w-full rounded-full object-cover aspect-square"
+      />
+    ) : null}
   </span>
 );
 ```
+
+## Do not ship a large field to a list just to render a thumbnail
+
+A value that is reasonable on one record is not reasonable on a page of them. Base64 images
+inlined into a collection response make the payload grow without bound — and the rendered page
+carries them twice, once in the HTML and once in the RSC flight data. Take a flag from the list
+endpoint and load the asset from its own URL.
+
+Example code before:
+
+```tsx
+<ContactAvatar contact={contact} />   // contact.photo is 2 MB of base64
+```
+
+Example code after:
+
+```tsx
+// The list carries has_photo; the bytes come from a route that can be cached.
+const src =
+  contact.photo ??
+  (contact.has_photo && contact.id ? `/api/contacts/${contact.id}/photo/` : null);
+```
+
+Mind the app's `trailingSlash` setting when building such a URL — a mismatch turns every
+image request into a 308 redirect plus a second round trip.
 
 ## Validate uploads in the browser before encoding them
 
