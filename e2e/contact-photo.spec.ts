@@ -1,5 +1,46 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import path from 'node:path'
+import zlib from 'node:zlib'
+import { randomBytes } from 'node:crypto'
+
+/** Minimal PNG writer, so a test can build an image of an arbitrary size. */
+function buildPng(width: number, height: number, idat: Buffer): Buffer {
+  const chunk = (kind: string, payload: Buffer) => {
+    const body = Buffer.concat([Buffer.from(kind, 'latin1'), payload])
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(payload.length)
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(body))
+    return Buffer.concat([len, body, crc])
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8
+  header[9] = 2
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', idat),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+const CRC_TABLE = (() => {
+  const table = new Int32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    table[n] = c
+  }
+  return table
+})()
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
 
 /**
  * Photo upload, circular avatar, and the initials fallback.
@@ -207,6 +248,44 @@ test.describe('contact photo', () => {
 
     await deleteContact(page, id)
   })
+})
+
+test('saves a photo large enough to exceed the default action body limit', async ({ page }) => {
+  // Every other fixture here is under a kilobyte, which hid a real bug: Next
+  // caps a server action body at 1 MB by default, and a photo travels to the
+  // action as base64. Anything over roughly 730 KB on disk failed to save with
+  // "An unexpected response was received from the server" — that is most real
+  // photos. next.config.ts raises the limit; this proves it stays raised.
+  const id = await createContact(page, {
+    first: 'Big',
+    last: 'Photo',
+    email: uniqueEmail('bigphoto'),
+  })
+
+  // ~1.4 MB of incompressible pixels, so it cannot shrink under the limit.
+  const width = 700
+  const rows: Buffer[] = []
+  for (let y = 0; y < width; y++) {
+    rows.push(Buffer.concat([Buffer.from([0]), randomBytes(width * 3)]))
+  }
+  const png = buildPng(width, width, zlib.deflateSync(Buffer.concat(rows), { level: 0 }))
+  expect(png.length).toBeGreaterThan(1024 * 1024)
+
+  await page.goto(`/contacts/${id}/edit`)
+  await page.setInputFiles('input[type="file"]', {
+    name: 'big.png',
+    mimeType: 'image/png',
+    buffer: png,
+  })
+  await expect(page.getByAltText(/profile photo preview/i)).toBeVisible()
+
+  await page.getByRole('button', { name: /save|update/i }).first().click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Big Photo' })).toBeVisible()
+
+  const saved = await page.request.get(`${API}/api/v1/contacts/${id}`).then((r) => r.json())
+  expect(saved.photo).toBeTruthy()
+
+  await deleteContact(page, id)
 })
 
 test.describe('avatar fallback', () => {
