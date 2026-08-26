@@ -74,8 +74,20 @@ describe("contactInputSchema", () => {
 });
 
 describe("photo size", () => {
-  const png = (bytes: number) =>
-    `data:image/png;base64,${"A".repeat(Math.ceil((bytes * 4) / 3))}`;
+  /**
+   * A data URL that really starts with the PNG signature, padded to ~`bytes`.
+   *
+   * The signature plus one filler byte is 9 bytes, which encodes to exactly 12
+   * unpadded base64 characters — so more characters can be appended without
+   * breaking alignment. Encoding megabytes through btoa would blow the stack.
+   */
+  const png = (bytes: number) => {
+    const head = btoa(
+      String.fromCharCode(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00),
+    );
+    const remaining = Math.max(0, Math.ceil(((bytes - 9) * 4) / 3));
+    return `data:image/png;base64,${head}${"A".repeat(remaining - (remaining % 4))}`;
+  };
 
   it("measures decoded bytes, not the encoded string", () => {
     // Base64 inflates by ~4/3, so capping the string length would wrongly
