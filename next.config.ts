@@ -43,6 +43,16 @@ const gitSha =
 // so it needs a Node runtime. `output: "export"` is deliberately not offered.
 const nextConfig: NextConfig = {
   trailingSlash: true,
+  experimental: {
+    serverActions: {
+      // Contact photos travel to the server action as base64 inside the form
+      // body. The API caps a photo at 2 MB decoded, which is ~2.7 MB encoded,
+      // and Next defaults this limit to 1 MB — so without this any photo over
+      // roughly 730 KB was rejected before the action ran, and the submit
+      // failed with "An unexpected response was received from the server".
+      bodySizeLimit: "4mb",
+    },
+  },
   // Hosts allowed to load dev-only resources (/_next/hmr, /_next/static…) when the
   // dev server is reached from something other than localhost — a phone or another
   // machine on the LAN. Matched on hostname alone: ports are ignored, so this has
