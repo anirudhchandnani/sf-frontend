@@ -3,6 +3,29 @@
  * Field names stay snake_case so payloads map 1:1 onto the wire format.
  */
 
+/** What an address is for. Mirrors the API's `AddressType` enum. */
+export const ADDRESS_TYPES = ["Home", "Work", "Other"] as const;
+export type AddressType = (typeof ADDRESS_TYPES)[number];
+
+/** Order the detail page groups addresses in. */
+export const ADDRESS_TYPE_ORDER = ADDRESS_TYPES;
+
+/** `AddressCreate` — one address as sent to the API. */
+export interface AddressInput {
+  type: AddressType;
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+}
+
+/** `AddressRead` — a stored address, always nested inside its contact. */
+export interface Address extends AddressInput {
+  id: number;
+  contact_id: number;
+}
+
 /** `ContactRead` — a stored contact, as returned by every contact endpoint. */
 export interface Contact {
   id: number;
@@ -12,12 +35,9 @@ export interface Contact {
   phone: string | null;
   company: string | null;
   job_title: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  postal_code: string | null;
-  country: string | null;
   notes: string | null;
+  /** Every address for this contact. A contact may have none. */
+  addresses: Address[];
   /** Profile picture as a base64 data URL, or null to fall back to initials. */
   photo: string | null;
   created_at: string;
@@ -25,11 +45,19 @@ export interface Contact {
   full_name: string;
 }
 
-/** Every editable field, i.e. `ContactCreate` / `ContactReplace`. */
+/**
+ * Every editable field, i.e. `ContactCreate` / `ContactReplace`.
+ *
+ * `addresses` is narrowed to `AddressInput[]`: writes carry no ids, since the
+ * server assigns them and a full replace rebuilds the whole set.
+ */
 export type ContactInput = Omit<
   Contact,
-  "id" | "created_at" | "updated_at" | "full_name"
->;
+  "id" | "created_at" | "updated_at" | "full_name" | "addresses"
+> & { addresses: AddressInput[] };
+
+/** The scalar contact fields — everything the flat text form covers. */
+export type ContactScalarInput = Omit<ContactInput, "addresses">;
 
 /** `ContactPage` — one page of contacts plus the totals needed to paginate. */
 export interface ContactPage {
@@ -76,9 +104,13 @@ export type FormState = {
   /** Message shown above the form; used for API-level failures. */
   message?: string;
   /** Per-field messages keyed by input name. */
-  fieldErrors?: Partial<Record<keyof ContactInput, string>>;
+  fieldErrors?: Partial<Record<keyof ContactScalarInput, string>>;
   /** Echo of the submitted values so the form survives a failed round trip. */
-  values?: Partial<Record<keyof ContactInput, string>>;
+  values?: Partial<Record<keyof ContactScalarInput, string>>;
+  /** Echo of the submitted addresses, so repeated rows survive too. */
+  addressValues?: AddressInput[];
+  /** Message shown against a specific address row, keyed by its index. */
+  addressErrors?: Record<number, string>;
 };
 
 export const EMPTY_FORM_STATE: FormState = { status: "idle" };

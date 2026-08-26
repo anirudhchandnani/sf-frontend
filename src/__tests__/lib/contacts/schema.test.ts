@@ -58,12 +58,12 @@ describe("contactInputSchema", () => {
 
   it("enforces the API's length limits", () => {
     const result = contactInputSchema.safeParse(
-      values({ first_name: "a".repeat(101), postal_code: "9".repeat(21) }),
+      values({ first_name: "a".repeat(101), phone: "9".repeat(41) }),
     );
 
     expect(zodFieldErrors(result.error!)).toEqual({
       first_name: "First name must be 100 characters or fewer",
-      postal_code: "Postal code must be 20 characters or fewer",
+      phone: "Phone must be 40 characters or fewer",
     });
   });
 });

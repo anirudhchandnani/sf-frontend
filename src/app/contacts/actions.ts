@@ -11,8 +11,11 @@ import {
   toFieldErrors,
 } from "@/lib/contacts/api";
 import {
+  addressListSchema,
   contactInputSchema,
+  formDataToAddresses,
   formDataToValues,
+  zodAddressErrors,
   zodFieldErrors,
 } from "@/lib/contacts/schema";
 import type { Contact, FormState } from "@/lib/contacts/types";
@@ -39,23 +42,33 @@ export async function saveContactAction(
   formData: FormData,
 ): Promise<FormState> {
   const values = formDataToValues(formData);
+  const rawAddresses = formDataToAddresses(formData);
 
   const parsed = contactInputSchema.safeParse(values);
-  if (!parsed.success) {
+  const parsedAddresses = addressListSchema.safeParse(rawAddresses);
+
+  if (!parsed.success || !parsedAddresses.success) {
     return {
       status: "error",
       message: "Please fix the highlighted fields.",
-      fieldErrors: zodFieldErrors(parsed.error),
+      fieldErrors: parsed.success ? undefined : zodFieldErrors(parsed.error),
+      addressErrors: parsedAddresses.success
+        ? undefined
+        : zodAddressErrors(parsedAddresses.error),
       values,
+      // Echo the rows back so a validation failure does not empty the list.
+      addressValues: parsedAddresses.success ? parsedAddresses.data : undefined,
     };
   }
+
+  const input = { ...parsed.data, addresses: parsedAddresses.data };
 
   let saved: Contact;
   try {
     saved =
       contactId === null
-        ? await createContact(parsed.data)
-        : await replaceContact(contactId, parsed.data);
+        ? await createContact(input)
+        : await replaceContact(contactId, input);
   } catch (error) {
     if (error instanceof ApiUnreachableError) {
       return { status: "error", message: UNREACHABLE, values };

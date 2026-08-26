@@ -1,4 +1,4 @@
-import type { Contact } from "./types";
+import { ADDRESS_TYPE_ORDER, type Address, type AddressType, type Contact } from "./types";
 
 /** Presentation helpers shared by the list, the detail page, and the cards. */
 
@@ -67,13 +67,27 @@ export function jobLine(contact: Contact): string | null {
 }
 
 /** Single-line postal address, skipping the parts that are not filled in. */
-export function addressLine(contact: Contact): string | null {
+export function addressLine(address: Address): string | null {
   const parts = [
-    contact.address,
-    contact.city,
-    [contact.state, contact.postal_code].filter(Boolean).join(" "),
-    contact.country,
+    address.street,
+    address.city,
+    [address.state, address.postal_code].filter(Boolean).join(" "),
+    address.country,
   ].filter((part): part is string => Boolean(part && part.trim()));
 
   return parts.length ? parts.join(", ") : null;
+}
+
+/**
+ * Bucket a contact's addresses by type, in a fixed display order and skipping
+ * empty groups. Driven by ADDRESS_TYPE_ORDER so a fourth type needs no new
+ * rendering branch.
+ */
+export function groupAddressesByType(
+  addresses: Address[],
+): Array<{ type: AddressType; addresses: Address[] }> {
+  return ADDRESS_TYPE_ORDER.map((type) => ({
+    type,
+    addresses: addresses.filter((address) => address.type === type),
+  })).filter((group) => group.addresses.length > 0);
 }

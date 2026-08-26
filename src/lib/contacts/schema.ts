@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { ContactInput } from "./types";
+import {
+  ADDRESS_TYPES,
+  type AddressInput,
+  type ContactScalarInput,
+} from "./types";
 
 /**
  * Client/server-shared validation for the contact form.
@@ -50,11 +54,6 @@ export const contactInputSchema = z.object({
   phone: optionalText(40, "Phone"),
   company: optionalText(200, "Company"),
   job_title: optionalText(200, "Job title"),
-  address: optionalText(300, "Address"),
-  city: optionalText(120, "City"),
-  state: optionalText(120, "State"),
-  postal_code: optionalText(20, "Postal code"),
-  country: optionalText(120, "Country"),
   notes: z
     .string()
     .trim()
@@ -71,19 +70,31 @@ export const contactInputSchema = z.object({
     .transform((value) => value || null)
     .nullable()
     .default(null),
-}) satisfies z.ZodType<ContactInput, unknown>;
+}) satisfies z.ZodType<ContactScalarInput, unknown>;
+
+/** One address row. Every part is optional; the type is not. */
+export const addressInputSchema = z.object({
+  type: z.enum(ADDRESS_TYPES),
+  street: optionalText(300, "Street address"),
+  city: optionalText(120, "City"),
+  state: optionalText(120, "State"),
+  postal_code: optionalText(20, "Postal code"),
+  country: optionalText(120, "Country"),
+}) satisfies z.ZodType<AddressInput, unknown>;
+
+export const addressListSchema = z.array(addressInputSchema);
 
 export type ContactFormValues = z.input<typeof contactInputSchema>;
 
 /** Collapse a ZodError into one message per field, keyed by input name. */
 export function zodFieldErrors(
   error: z.ZodError,
-): Partial<Record<keyof ContactInput, string>> {
-  const fieldErrors: Partial<Record<keyof ContactInput, string>> = {};
+): Partial<Record<keyof ContactScalarInput, string>> {
+  const fieldErrors: Partial<Record<keyof ContactScalarInput, string>> = {};
   for (const issue of error.issues) {
     const key = issue.path[0];
     if (typeof key === "string" && !(key in fieldErrors)) {
-      fieldErrors[key as keyof ContactInput] = issue.message;
+      fieldErrors[key as keyof ContactScalarInput] = issue.message;
     }
   }
   return fieldErrors;
@@ -94,7 +105,7 @@ export function zodFieldErrors(
 /* ------------------------------------------------------------------ */
 
 export interface ContactFieldSpec {
-  name: keyof ContactInput;
+  name: keyof ContactScalarInput;
   label: string;
   type?: "text" | "email" | "tel" | "textarea";
   required?: boolean;
@@ -172,48 +183,6 @@ export const CONTACT_FIELD_GROUPS: ContactFieldGroup[] = [
     ],
   },
   {
-    title: "Address",
-    description: "Optional postal details.",
-    fields: [
-      {
-        name: "address",
-        label: "Street address",
-        maxLength: 300,
-        placeholder: "1 Market St, Suite 400",
-        autoComplete: "street-address",
-        wide: true,
-      },
-      {
-        name: "city",
-        label: "City",
-        maxLength: 120,
-        placeholder: "San Francisco",
-        autoComplete: "address-level2",
-      },
-      {
-        name: "state",
-        label: "State / region",
-        maxLength: 120,
-        placeholder: "CA",
-        autoComplete: "address-level1",
-      },
-      {
-        name: "postal_code",
-        label: "Postal code",
-        maxLength: 20,
-        placeholder: "94105",
-        autoComplete: "postal-code",
-      },
-      {
-        name: "country",
-        label: "Country",
-        maxLength: 120,
-        placeholder: "USA",
-        autoComplete: "country-name",
-      },
-    ],
-  },
-  {
     title: "Notes",
     description: "Anything worth remembering. No length limit.",
     fields: [
@@ -244,14 +213,59 @@ export const CONTACT_FIELDS: ContactFieldSpec[] = CONTACT_FIELD_GROUPS.flatMap(
  */
 export function formDataToValues(
   formData: FormData,
-): Record<keyof ContactInput, string> {
+): Record<keyof ContactScalarInput, string> {
   return {
     ...(Object.fromEntries(
       CONTACT_FIELDS.map((field) => [
         field.name,
         String(formData.get(field.name) ?? ""),
       ]),
-    ) as Record<keyof ContactInput, string>),
+    ) as Record<keyof ContactScalarInput, string>),
     photo: String(formData.get("photo") ?? ""),
   };
+}
+
+/** Matches `addresses[0][street]` and captures the index and the field. */
+const ADDRESS_KEY_RE = /^addresses\[(\d+)]\[(\w+)]$/;
+
+/**
+ * Pull the repeated address rows out of a submitted form.
+ *
+ * `FormData` is flat, so a list needs indexed input names. `formData.get()`
+ * returns only the first value for a repeated key, which would silently keep
+ * one address and drop the rest — hence walking the entries instead.
+ *
+ * Indices are sorted numerically and then compacted, so removing the middle
+ * row of three still yields a contiguous list.
+ */
+export function formDataToAddresses(formData: FormData): unknown[] {
+  const rows = new Map<number, Record<string, string>>();
+
+  for (const [key, value] of formData.entries()) {
+    const match = ADDRESS_KEY_RE.exec(key);
+    if (!match) continue;
+
+    const index = Number(match[1]);
+    const row = rows.get(index) ?? {};
+    row[match[2]] = String(value);
+    rows.set(index, row);
+  }
+
+  return [...rows.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, row]) => row);
+}
+
+/** Collapse a ZodError over an address array into one message per row index. */
+export function zodAddressErrors(error: z.ZodError): Record<number, string> {
+  const errors: Record<number, string> = {};
+  for (const issue of error.issues) {
+    const index = issue.path[0];
+    if (typeof index === "number" && !(index in errors)) {
+      const field = issue.path[1];
+      errors[index] =
+        typeof field === "string" ? `${field}: ${issue.message}` : issue.message;
+    }
+  }
+  return errors;
 }
