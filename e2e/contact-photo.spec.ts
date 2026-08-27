@@ -1,5 +1,46 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import path from 'node:path'
+import zlib from 'node:zlib'
+import { randomBytes } from 'node:crypto'
+
+/** Minimal PNG writer, so a test can build an image of an arbitrary size. */
+function buildPng(width: number, height: number, idat: Buffer): Buffer {
+  const chunk = (kind: string, payload: Buffer) => {
+    const body = Buffer.concat([Buffer.from(kind, 'latin1'), payload])
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(payload.length)
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(body))
+    return Buffer.concat([len, body, crc])
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8
+  header[9] = 2
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', idat),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+const CRC_TABLE = (() => {
+  const table = new Int32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    table[n] = c
+  }
+  return table
+})()
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
 
 /**
  * Photo upload, circular avatar, and the initials fallback.
@@ -159,9 +200,30 @@ test.describe('contact photo', () => {
     })
 
     await page.goto('/contacts')
-    await expectCircular(page.locator('img[src^="data:image"]').first())
+
+    // List responses carry has_photo rather than inline base64, so the avatar
+    // points at the photo route. Inlining images here made the page ~50 MB.
+    const avatar = page.locator(`img[src="/api/contacts/${id}/photo/"]`)
+    await expectCircular(avatar)
+    await expect(avatar).toHaveJSProperty('naturalWidth', 240)
+
     await page.screenshot({ path: `${SHOTS}/07-list-with-avatars.png`, fullPage: true })
 
+    await deleteContact(page, id)
+  })
+
+  test('the list page does not inline photo data', async ({ page }) => {
+    const id = await createContact(page, {
+      first: 'Payload',
+      last: 'Guard',
+      email: uniqueEmail('payload'),
+      photo: 'large.png',
+    })
+
+    const response = await page.request.get('/contacts')
+    const html = await response.text()
+
+    expect(html).not.toContain('data:image/png;base64')
     await deleteContact(page, id)
   })
 
@@ -183,6 +245,84 @@ test.describe('contact photo', () => {
     await expect(page.locator('img[src^="data:image"]')).toHaveCount(0)
     await expect(page.getByText('RP').first()).toBeVisible()
     await page.screenshot({ path: `${SHOTS}/09-photo-removed-initials.png`, fullPage: true })
+
+    await deleteContact(page, id)
+  })
+})
+
+test('saves a photo large enough to exceed the default action body limit', async ({ page }) => {
+  // Every other fixture here is under a kilobyte, which hid a real bug: Next
+  // caps a server action body at 1 MB by default, and a photo travels to the
+  // action as base64. Anything over roughly 730 KB on disk failed to save with
+  // "An unexpected response was received from the server" — that is most real
+  // photos. next.config.ts raises the limit; this proves it stays raised.
+  const id = await createContact(page, {
+    first: 'Big',
+    last: 'Photo',
+    email: uniqueEmail('bigphoto'),
+  })
+
+  // ~1.4 MB of incompressible pixels, so it cannot shrink under the limit.
+  const width = 700
+  const rows: Buffer[] = []
+  for (let y = 0; y < width; y++) {
+    rows.push(Buffer.concat([Buffer.from([0]), randomBytes(width * 3)]))
+  }
+  const png = buildPng(width, width, zlib.deflateSync(Buffer.concat(rows), { level: 0 }))
+  expect(png.length).toBeGreaterThan(1024 * 1024)
+
+  await page.goto(`/contacts/${id}/edit`)
+  await page.setInputFiles('input[type="file"]', {
+    name: 'big.png',
+    mimeType: 'image/png',
+    buffer: png,
+  })
+  await expect(page.getByAltText(/profile photo preview/i)).toBeVisible()
+
+  await page.getByRole('button', { name: /save|update/i }).first().click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Big Photo' })).toBeVisible()
+
+  const saved = await page.request.get(`${API}/api/v1/contacts/${id}`).then((r) => r.json())
+  expect(saved.photo).toBeTruthy()
+
+  await deleteContact(page, id)
+})
+
+test.describe('avatar fallback', () => {
+  test('an unreachable photo reveals the initials', async ({ page }) => {
+    // Simulate the decode failure that used to leave a blank circle: the flag
+    // says there is a photo, but the route 404s.
+    const id = await createContact(page, {
+      first: 'Broken',
+      last: 'Image',
+      email: uniqueEmail('broken'),
+      photo: 'avatar.png',
+    })
+
+    await page.route(`**/api/contacts/${id}/photo`, (route) => route.fulfill({ status: 404 }))
+    await page.goto('/contacts')
+
+    // onError hides the image and the initials underneath are revealed.
+    await expect(page.getByText('BI').first()).toBeVisible()
+    await page.screenshot({ path: `${SHOTS}/10-broken-photo-falls-back.png`, fullPage: true })
+
+    await page.unroute(`**/api/contacts/${id}/photo`)
+    await deleteContact(page, id)
+  })
+
+  test('initials sit behind the photo so a transparent image is never blank', async ({ page }) => {
+    const id = await createContact(page, {
+      first: 'Ghost',
+      last: 'User',
+      email: uniqueEmail('ghost'),
+      photo: 'avatar.png',
+    })
+
+    await page.goto(`/contacts/${id}`)
+
+    // The text is present in the DOM even while the photo covers it, which is
+    // what stops a fully transparent PNG reading as an empty ring.
+    await expect(page.getByText('GU').first()).toBeAttached()
 
     await deleteContact(page, id)
   })
@@ -238,6 +378,21 @@ test.describe('photo rejections', () => {
     await expect(page.locator('p[role="alert"]')).toContainText(/2 MB/i)
     await expect(page.getByAltText(/profile photo preview/i)).toHaveCount(0)
     await page.screenshot({ path: `${SHOTS}/08-oversized-rejected.png`, fullPage: true })
+  })
+
+  test('rejects bytes that are not a real image', async ({ page }) => {
+    // The API sniffs magic bytes now, so a PNG label on HTML content is refused
+    // rather than stored and later rendered as a broken avatar.
+    const response = await page.request.post(`${API}/api/v1/contacts`, {
+      data: {
+        first_name: 'Fake',
+        last_name: 'Png',
+        email: uniqueEmail('fakepng'),
+        photo: `data:image/png;base64,${Buffer.from('<html>nope</html>').toString('base64')}`,
+      },
+    })
+
+    expect(response.status()).toBe(422)
   })
 
   test('rejects an SVG, which can carry script', async ({ page }) => {

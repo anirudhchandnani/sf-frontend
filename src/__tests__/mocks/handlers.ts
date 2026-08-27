@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { apiBaseUrl } from "@/lib/apiClient";
-import type { Contact, ContactPage } from "@/lib/contacts/types";
+import type { Contact, ContactListItem, ContactPage } from "@/lib/contacts/types";
 
 /** Prefix a path with the configured API base so handlers match apiClient URLs. */
 export function api(path: string): string {
@@ -19,13 +19,9 @@ export function makeContact(overrides: Partial<Contact> = {}): Contact {
     phone: "+1-415-555-0101",
     company: "Analytical Engines",
     job_title: "Mathematician",
-    address: null,
-    city: "San Francisco",
-    state: "CA",
-    postal_code: null,
-    country: "USA",
     notes: null,
     photo: null,
+    addresses: [],
     created_at: "2026-08-19T17:04:53.743932Z",
     updated_at: "2026-08-19T17:04:53.743936Z",
     full_name: `${first_name} ${last_name}`,
@@ -33,8 +29,13 @@ export function makeContact(overrides: Partial<Contact> = {}): Contact {
   };
 }
 
+/** Mirror of the API's ContactListItem: no inline photo, just the flag. */
+export function toListItem({ photo, ...rest }: Contact): ContactListItem {
+  return { ...rest, has_photo: photo !== null };
+}
+
 export function makePage(items: Contact[], total = items.length): ContactPage {
-  return { items, total, limit: 25, offset: 0 };
+  return { items: items.map(toListItem), total, limit: 25, offset: 0 };
 }
 
 export const CONTACTS: Contact[] = [
@@ -49,6 +50,9 @@ export const CONTACTS: Contact[] = [
     full_name: "Grace Hopper",
   }),
 ];
+
+/** The same fixtures as the API returns them in a list: has_photo, no photo. */
+export const LIST_CONTACTS: ContactListItem[] = CONTACTS.map(toListItem);
 
 export const handlers = [
   http.get(api("/health"), () =>

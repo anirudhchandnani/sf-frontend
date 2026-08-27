@@ -9,8 +9,19 @@ function hiddenPhotoInput(container: HTMLElement): HTMLInputElement | null {
   return container.querySelector('input[type="hidden"][name="photo"]');
 }
 
+/** Leading bytes for each type, so the component's content check passes. */
+const SIGNATURES: Record<string, number[]> = {
+  "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  "image/jpeg": [0xff, 0xd8, 0xff, 0x00],
+  "image/gif": [0x47, 0x49, 0x46, 0x38, 0x39, 0x61],
+  "image/webp": [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50],
+};
+
 function fileOfSize(bytes: number, type = "image/png"): File {
-  const file = new File(["x"], "avatar.png", { type });
+  // Real magic bytes when the type is one we know, so the size and type paths
+  // are exercised independently of the content check.
+  const body = new Uint8Array(SIGNATURES[type] ?? [0x00, 0x01, 0x02, 0x03]);
+  const file = new File([body], "avatar.png", { type });
   Object.defineProperty(file, "size", { value: bytes });
   return file;
 }

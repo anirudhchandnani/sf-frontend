@@ -2,9 +2,11 @@ import {
   addressLine,
   avatarHue,
   formatTimestamp,
+  groupAddressesByType,
   initials,
   jobLine,
 } from "@/lib/contacts/format";
+import type { Address } from "@/lib/contacts/types";
 import { makeContact } from "../../mocks/handlers";
 
 describe("initials", () => {
@@ -95,22 +97,69 @@ describe("jobLine", () => {
   });
 });
 
+function makeAddress(overrides: Partial<Address> = {}): Address {
+  return {
+    id: 1,
+    contact_id: 1,
+    type: "Home",
+    street: null,
+    city: "San Francisco",
+    state: "CA",
+    postal_code: null,
+    country: "USA",
+    ...overrides,
+  };
+}
+
 describe("addressLine", () => {
   it("skips the parts that are not filled in", () => {
-    expect(addressLine(makeContact())).toBe("San Francisco, CA, USA");
+    expect(addressLine(makeAddress())).toBe("San Francisco, CA, USA");
   });
 
   it("pairs the state with the postal code", () => {
     expect(
-      addressLine(makeContact({ address: "1 Market St", postal_code: "94105" })),
+      addressLine(makeAddress({ street: "1 Market St", postal_code: "94105" })),
     ).toBe("1 Market St, San Francisco, CA 94105, USA");
   });
 
   it("returns null when there is no address at all", () => {
     expect(
       addressLine(
-        makeContact({ city: null, state: null, country: null, postal_code: null }),
+        makeAddress({ city: null, state: null, country: null, postal_code: null }),
       ),
     ).toBeNull();
+  });
+});
+
+describe("groupAddressesByType", () => {
+  it("orders groups Home, Work, Other regardless of input order", () => {
+    const groups = groupAddressesByType([
+      makeAddress({ id: 1, type: "Other" }),
+      makeAddress({ id: 2, type: "Work" }),
+      makeAddress({ id: 3, type: "Home" }),
+    ]);
+
+    expect(groups.map((group) => group.type)).toEqual(["Home", "Work", "Other"]);
+  });
+
+  it("omits types the contact has none of", () => {
+    const groups = groupAddressesByType([makeAddress({ type: "Work" })]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].type).toBe("Work");
+  });
+
+  it("keeps several addresses of the same type together", () => {
+    const groups = groupAddressesByType([
+      makeAddress({ id: 1, type: "Home", city: "London" }),
+      makeAddress({ id: 2, type: "Home", city: "Bath" }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].addresses.map((a) => a.city)).toEqual(["London", "Bath"]);
+  });
+
+  it("returns nothing for a contact with no addresses", () => {
+    expect(groupAddressesByType([])).toEqual([]);
   });
 });

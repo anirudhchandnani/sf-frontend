@@ -33,7 +33,50 @@ describe("ContactForm", () => {
     expect(screen.getByLabelText(/first name/i)).toHaveValue("Ada");
     expect(screen.getByLabelText(/^email/i)).toHaveValue("ada@example.com");
     // Nulls become empty inputs rather than the string "null".
-    expect(screen.getByLabelText(/street address/i)).toHaveValue("");
+    expect(screen.getByLabelText(/notes/i)).toHaveValue("");
+  });
+
+  it("shows the empty state when a contact has no addresses", () => {
+    renderForm(jest.fn(), makeContact({ addresses: [] }));
+
+    expect(screen.getByText(/no addresses yet/i)).toBeInTheDocument();
+  });
+
+  it("prefills one address row per existing address", () => {
+    renderForm(
+      jest.fn(),
+      makeContact({
+        addresses: [
+          {
+            id: 1,
+            contact_id: 1,
+            type: "Work",
+            street: "1 Market St",
+            city: "San Francisco",
+            state: "CA",
+            postal_code: "94105",
+            country: "USA",
+          },
+          {
+            id: 2,
+            contact_id: 1,
+            type: "Home",
+            street: "12 Ockham Rd",
+            city: "London",
+            state: null,
+            postal_code: "SW1A 1AA",
+            country: "UK",
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getByLabelText("Address 1 type")).toHaveValue("Work");
+    expect(screen.getByLabelText("Address 2 type")).toHaveValue("Home");
+    expect(screen.getByDisplayValue("1 Market St")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("12 Ockham Rd")).toBeInTheDocument();
+    // A null part renders as an empty input, not the string "null".
+    expect(screen.getByDisplayValue("London")).toBeInTheDocument();
   });
 
   it("submits the entered values to the action", async () => {

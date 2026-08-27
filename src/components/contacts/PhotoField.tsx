@@ -3,7 +3,7 @@
 import { useId, useRef, useState } from "react";
 import { AlertCircle, ImageUp, Trash2 } from "lucide-react";
 import { buttonClasses } from "@/components/ui/Button";
-import { MAX_PHOTO_BYTES } from "@/lib/contacts/schema";
+import { MAX_PHOTO_BYTES, sniffImageType } from "@/lib/contacts/schema";
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
@@ -51,7 +51,23 @@ export default function PhotoField({
     const reader = new FileReader();
     reader.onerror = () => setLocalError("Could not read that file.");
     reader.onload = () => {
-      setPhoto(String(reader.result));
+      const dataUrl = String(reader.result);
+
+      // file.type comes from the extension on most platforms, so a renamed
+      // text file reports image/png. Check the bytes, as the API does.
+      const actual = sniffImageType(dataUrl);
+      if (actual === null) {
+        setLocalError("That file is not a valid image.");
+        event.target.value = "";
+        return;
+      }
+      if (actual !== file.type) {
+        setLocalError(`That file is named as ${file.type} but contains ${actual} data.`);
+        event.target.value = "";
+        return;
+      }
+
+      setPhoto(dataUrl);
       setLocalError(null);
     };
     reader.readAsDataURL(file);
