@@ -2,9 +2,32 @@ import type { Contact } from "./types";
 
 /** Presentation helpers shared by the list, the detail page, and the cards. */
 
+/**
+ * First visible character of a string, counted in grapheme clusters.
+ *
+ * `str.at(0)` returns one UTF-16 code unit, which splits any character outside
+ * the BMP — an emoji or a name starting with 𝒜 comes back as half a surrogate
+ * pair and renders as a replacement glyph. Segmenter also keeps ZWJ sequences
+ * (👨‍👩‍👧) and combining accents together.
+ */
+function firstGrapheme(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter(undefined, {
+      granularity: "grapheme",
+    });
+    return segmenter.segment(trimmed)[Symbol.iterator]().next().value?.segment ?? "";
+  }
+
+  // Code-point fallback: still correct for emoji, just not for ZWJ sequences.
+  return Array.from(trimmed)[0] ?? "";
+}
+
 /** Up to two letters for the avatar bubble. */
 export function initials(contact: Pick<Contact, "first_name" | "last_name">) {
-  return `${contact.first_name.at(0) ?? ""}${contact.last_name.at(0) ?? ""}`
+  return `${firstGrapheme(contact.first_name)}${firstGrapheme(contact.last_name)}`
     .toUpperCase()
     .trim();
 }

@@ -11,6 +11,52 @@ describe("initials", () => {
   it("takes the first letter of each name", () => {
     expect(initials({ first_name: "ada", last_name: "lovelace" })).toBe("AL");
   });
+
+  it("survives an emoji name without emitting half a surrogate pair", () => {
+    // `.at(0)` would return a lone high surrogate here and render as U+FFFD.
+    expect(initials({ first_name: "🎉", last_name: "Party" })).toBe("🎉P");
+  });
+
+  it("keeps a ZWJ emoji sequence intact", () => {
+    expect(initials({ first_name: "👨‍👩‍👧", last_name: "Family" })).toBe(
+      "👨‍👩‍👧F",
+    );
+  });
+
+  it("handles astral-plane letters", () => {
+    expect(initials({ first_name: "𝒜da", last_name: "𝔏ovelace" })).toBe("𝒜𝔏");
+  });
+
+  it("handles non-Latin scripts", () => {
+    expect(initials({ first_name: "Ада", last_name: "Лавлейс" })).toBe("АЛ");
+    expect(initials({ first_name: "愛", last_name: "田" })).toBe("愛田");
+    expect(initials({ first_name: "أحمد", last_name: "علي" })).toBe("أع");
+  });
+
+  it("keeps a combining accent attached to its base letter", () => {
+    expect(initials({ first_name: "é", last_name: "Smith" })).toBe("ÉS");
+  });
+
+  it("ignores leading and trailing whitespace", () => {
+    expect(initials({ first_name: "  ada  ", last_name: "  lovelace " })).toBe(
+      "AL",
+    );
+  });
+
+  it("returns what it can when a name is blank", () => {
+    expect(initials({ first_name: "Ada", last_name: "" })).toBe("A");
+    expect(initials({ first_name: "", last_name: "Lovelace" })).toBe("L");
+    expect(initials({ first_name: "", last_name: "" })).toBe("");
+    expect(initials({ first_name: "   ", last_name: "   " })).toBe("");
+  });
+
+  it("never returns more than two graphemes", () => {
+    const result = initials({
+      first_name: "Christopher",
+      last_name: "Wallace-Smith",
+    });
+    expect(Array.from(result)).toHaveLength(2);
+  });
 });
 
 describe("avatarHue", () => {
