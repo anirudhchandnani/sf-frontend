@@ -33,9 +33,12 @@ export default function ContactAvatar({
 }) {
   // Prefer the inline value when the caller has it (the detail page), otherwise
   // fetch it — list responses carry has_photo rather than megabytes of base64.
+  // The trailing slash matters: next.config.ts sets `trailingSlash: true`, so
+  // without it every avatar request is a 308 redirect followed by a second
+  // round trip — half the image requests on a list page were redirects.
   const src =
     contact.photo ??
-    (contact.has_photo && contact.id ? `/api/contacts/${contact.id}/photo` : null);
+    (contact.has_photo && contact.id ? `/api/contacts/${contact.id}/photo/` : null);
 
   // Remember which source failed rather than a bare boolean: a new src is then
   // retried automatically, with no effect needed to reset the flag.

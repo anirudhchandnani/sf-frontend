@@ -108,8 +108,27 @@ describe("ContactAvatar", () => {
 
       expect(container.querySelector("img")).toHaveAttribute(
         "src",
-        "/api/contacts/7/photo",
+        "/api/contacts/7/photo/",
       );
+    });
+
+    it("ends the photo URL with a slash, matching trailingSlash", () => {
+      // next.config.ts sets trailingSlash: true. Without the slash every avatar
+      // request is a 308 redirect plus a second round trip — on a list page that
+      // was half of all image requests.
+      const { container } = render(
+        <ContactAvatar
+          contact={{
+            id: 42,
+            first_name: "Ada",
+            last_name: "Lovelace",
+            email: "ada@example.com",
+            has_photo: true,
+          }}
+        />,
+      );
+
+      expect(container.querySelector("img")?.getAttribute("src")).toMatch(/\/$/);
     });
 
     it("shows initials when has_photo is false", () => {

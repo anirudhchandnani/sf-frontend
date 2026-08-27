@@ -203,7 +203,7 @@ test.describe('contact photo', () => {
 
     // List responses carry has_photo rather than inline base64, so the avatar
     // points at the photo route. Inlining images here made the page ~50 MB.
-    const avatar = page.locator(`img[src="/api/contacts/${id}/photo"]`)
+    const avatar = page.locator(`img[src="/api/contacts/${id}/photo/"]`)
     await expectCircular(avatar)
     await expect(avatar).toHaveJSProperty('naturalWidth', 240)
 
